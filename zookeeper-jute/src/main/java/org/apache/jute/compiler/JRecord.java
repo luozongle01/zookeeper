@@ -26,6 +26,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import org.apache.jute.compiler.generated.Token;
 
 /**
  *
@@ -36,11 +37,12 @@ public class JRecord extends JCompType {
     private String mName;
     private String mModule;
     private List<JField> mFields;
+    private Token mRecordToken;
 
     /**
      * Creates a new instance of JRecord.
      */
-    public JRecord(String name, ArrayList<JField> flist) {
+    public JRecord(String name, ArrayList<JField> flist, Token recordToken) {
         super("struct " + name.substring(name.lastIndexOf('.') + 1),
                 name.replaceAll("\\.", "::"), getCsharpFQName(name), name, "Record", name, getCsharpFQName("IRecord"));
         mFQName = name;
@@ -48,10 +50,15 @@ public class JRecord extends JCompType {
         mName = name.substring(idx + 1);
         mModule = name.substring(0, idx);
         mFields = flist;
+        mRecordToken = recordToken;
     }
 
     public String getName() {
         return mName;
+    }
+
+    public Token getRecordToken() {
+        return mRecordToken;
     }
 
     public String getCsharpName() {
@@ -208,8 +215,18 @@ public class JRecord extends JCompType {
             }
         }
         String recName = getName();
+
+        String recordComments = getRecordComments();
+        if (recordComments != null && !recordComments.isEmpty()) {
+            h.write(recordComments);
+        }
         h.write("struct " + recName + " {\n");
         for (JField f : mFields) {
+
+            String fieldComments = getCFieldComments(f);
+            if (fieldComments != null && !fieldComments.isEmpty()) {
+                h.write(fieldComments);
+            }
             h.write(f.genCDecl());
         }
         h.write("};\n");
@@ -436,10 +453,19 @@ public class JRecord extends JCompType {
             jj.write("import org.apache.jute.*;\n");
             jj.write("import org.apache.jute.Record; // JDK14 needs explicit import due to clash with java.lang.Record\n");
             jj.write("import org.apache.yetus.audience.InterfaceAudience;\n");
+            String recordComments = getRecordComments();
+            if (recordComments != null && !recordComments.isEmpty()) {
+                jj.write(recordComments);
+            }
             jj.write("@InterfaceAudience.Public\n");
             jj.write("public class " + getName() + " implements Record {\n");
             for (Iterator<JField> i = mFields.iterator(); i.hasNext(); ) {
                 JField jf = i.next();
+
+                String fieldComments = getJavaFieldComments(jf);
+                if (fieldComments != null && !fieldComments.isEmpty()) {
+                    jj.write(fieldComments);
+                }
                 jj.write(jf.genJavaDecl());
             }
             jj.write("  public " + getName() + "() {\n");
@@ -766,5 +792,89 @@ public class JRecord extends JCompType {
             }
         }
         return fQName.toString();
+    }
+
+    public String getJavaFieldComments(JField jField) {
+        return getFieldComments(jField, "  ");
+    }
+
+    public String getCFieldComments(JField jField) {
+        return getFieldComments(jField, "    ");
+    }
+
+    private String getFieldComments(JField jField, String space) {
+        if (jField == null || jField.getTypeToken() == null || jField.getNextToken() == null) {
+            return "";
+        }
+
+        // get the comment before the line
+        List<String> comments = getComments(jField.getTypeToken().specialToken);
+
+        // get the end-of-line comments of fields
+        // If the current field and the next field are on the same line,
+        // the leading field comment of the next field should be discarded
+        Token tmpToken = jField.getNextToken();
+        while (tmpToken.specialToken != null) {
+
+            if (jField.getTypeToken().beginLine == tmpToken.specialToken.beginLine) {
+                Token endLineComments = tmpToken.specialToken;
+                tmpToken.specialToken = null;
+                comments.addAll(getComments(endLineComments));
+                break;
+            }
+
+            tmpToken = tmpToken.specialToken;
+        }
+
+        return formatComments(space, comments);
+    }
+
+    public String getRecordComments() {
+        if (getRecordToken() == null || getRecordToken().specialToken == null) {
+            return "";
+        }
+
+        // get the comments before the class
+        return formatComments("", getComments(getRecordToken().specialToken));
+    }
+
+    private static String formatComments(String space, List<String> commentList) {
+        if (commentList == null || commentList.isEmpty()) {
+            return "";
+        }
+
+        String comments = String.join("", commentList);
+
+        StringBuilder formatBuilder = new StringBuilder();
+        for (String s : comments.split("\r?\n")) {
+            formatBuilder.append("\n")
+                    .append(space)
+                    .append(s.replaceAll("^[ \t]+", ""));
+        }
+
+        return formatBuilder.append("\n").toString();
+    }
+
+    private static List<String> getComments(Token token) {
+        List<String> comments = new ArrayList<>();
+
+        if (token == null) {
+            return comments;
+        }
+
+        Token tmpToken = token;
+        while (tmpToken.specialToken != null) {
+            tmpToken = tmpToken.specialToken;
+        }
+
+        while (tmpToken != null) {
+            comments.add(tmpToken.image);
+            if (tmpToken == token) {
+                break;
+            }
+            tmpToken = tmpToken.next;
+        }
+
+        return comments;
     }
 }
