@@ -22,10 +22,12 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import org.apache.jute.compiler.generated.RccConstants;
 import org.apache.jute.compiler.generated.Token;
 
 /**
@@ -808,7 +810,7 @@ public class JRecord extends JCompType {
         }
 
         // get the comment before the line
-        List<String> comments = getComments(jField.getTypeToken().specialToken);
+        List<String> comments = extractLeadingComments(jField.getTypeToken().specialToken);
 
         // get the end-of-line comments of fields
         // If the current field and the next field are on the same line,
@@ -819,7 +821,7 @@ public class JRecord extends JCompType {
             if (jField.getTypeToken().beginLine == tmpToken.specialToken.beginLine) {
                 Token endLineComments = tmpToken.specialToken;
                 tmpToken.specialToken = null;
-                comments.addAll(getComments(endLineComments));
+                comments.addAll(extractLeadingComments(endLineComments));
                 break;
             }
 
@@ -835,27 +837,31 @@ public class JRecord extends JCompType {
         }
 
         // get the comments before the class
-        return formatComments("", getComments(getRecordToken().specialToken));
+        return formatComments("", extractLeadingComments(getRecordToken().specialToken));
     }
 
-    private static String formatComments(String space, List<String> commentList) {
-        if (commentList == null || commentList.isEmpty()) {
+    private static String formatComments(String indent, List<String> commentLines) {
+        if (commentLines == null || commentLines.isEmpty()) {
             return "";
         }
 
-        String comments = String.join("", commentList);
-
-        StringBuilder formatBuilder = new StringBuilder();
-        for (String s : comments.split("\r?\n")) {
-            formatBuilder.append("\n")
-                    .append(space)
-                    .append(s.replaceAll("^[ \t]+", ""));
+        StringBuilder builder = new StringBuilder();
+        for (String line : commentLines) {
+            if (!line.isEmpty()) {
+                builder.append(indent).append(line);
+            }
+            builder.append(System.lineSeparator());
         }
 
-        return formatBuilder.append("\n").toString();
+        return builder.toString();
     }
 
-    private static List<String> getComments(Token token) {
+    /**
+     * Extracts leading comments with indentation and line separator trimmed.
+     *
+     * <p>Empty line is represented as empty string.
+     */
+    private static List<String> extractLeadingComments(Token token) {
         List<String> comments = new ArrayList<>();
 
         if (token == null) {
@@ -867,8 +873,41 @@ public class JRecord extends JCompType {
             tmpToken = tmpToken.specialToken;
         }
 
+        int nextLine = tmpToken.beginLine;
         while (tmpToken != null) {
-            comments.add(tmpToken.image);
+            while (nextLine < tmpToken.beginLine) {
+                comments.add("");
+                nextLine++;
+            }
+            nextLine = tmpToken.endLine + 1;
+            System.err.printf("TOKEN kind: %d, beginLine: %d, beginColumn: %d\n", tmpToken.kind, tmpToken.beginLine, tmpToken.beginColumn);
+            System.err.printf("%s\n", tmpToken.image);
+            switch (tmpToken.kind) {
+            case RccConstants.ONE_LINE_COMMENT:
+                comments.add(tmpToken.image);
+                break;
+            case RccConstants.MULTI_LINE_COMMENT: {
+                List<String> lines = Arrays.asList(tmpToken.image.split("\r|\n|\r\n"));
+                System.err.printf("%s\n", lines);
+                // First line captures no indentation.
+                comments.add(lines.get(0));
+                int indentSpaces = tmpToken.beginColumn - 1;
+                for (int i = 1; i < lines.size(); i++) {
+                    String line = lines.get(i);
+                    int j = 0;
+                    while (j < indentSpaces && j < line.length()) {
+                        if (line.charAt(j) != ' ') {
+                            break;
+                        }
+                        j++;
+                    }
+                    comments.add(line.substring(j));
+                }
+            }
+            break;
+            default:
+                throw new IllegalStateException("expect comment token, but get token kind " + tmpToken.kind);
+            }
             if (tmpToken == token) {
                 break;
             }

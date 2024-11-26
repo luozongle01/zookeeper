@@ -119,22 +119,8 @@ SKIP :
 
 SPECIAL_TOKEN :
 {
-  <WithinOneLineComment: "//" (~["\n","\r"])* ("\n"|"\r"|"\r\n")>
-}
-
-SPECIAL_TOKEN :
-{
-  "/*" : WithinMultiLineComment
-}
-
-<WithinMultiLineComment> SPECIAL_TOKEN :
-{
-  "*/" : DEFAULT
-}
-
-<WithinMultiLineComment> MORE :
-{
-  <~[]>
+    <ONE_LINE_COMMENT: "//" (~["\n","\r"])*>
+|   <MULTI_LINE_COMMENT: "/*" (~["*"])* "*" (~["*","/"] (~["*"])* "*" | "*")* "/">
 }
 
 TOKEN :

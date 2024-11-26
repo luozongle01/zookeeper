@@ -17,8 +17,36 @@
  */
 
 module org.apache.zookeeper.data {
+    /*
+     * Something.
+     */
     class Id {
-        ustring scheme;
+        /**
+         * Schema.
+         */
+        ustring scheme; /* End of line
+         * for test purpose.
+         */
+        // ## Paragraph 1
+        // Something important.
+
+        // ## Paragraph 2
+        //
+        // Something else.
+
+        /*
+        * Paragraph 3.
+        */
+
+        /*
+         * Paragraph 4.
+
+         */
+
+        /**
+
+         ** Paragraph 5.
+         **/
         ustring id;
     }
     class ACL {
